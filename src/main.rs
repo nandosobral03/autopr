@@ -78,9 +78,9 @@ fn main() {
         .map(|line| {
             let parts = line.split("fix:").collect::<Vec<&str>>();
             let line = parts[1].trim();
-            format!("- Fix {}", capitalize_word(line))
+            capitalize_word(line)
         })
-        .map(|line| format!("Fix {}", line))
+        .map(|line| format!("- Fix {}", line))
         .collect::<Vec<String>>()
         .join("\n");
 
