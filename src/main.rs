@@ -127,6 +127,7 @@ fn main() {
             String::from_utf8_lossy(&output.stderr)
         );
     } else {
-        println!("Pull request created successfully.");
+        println!("New name: {}", new_name);
+        println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
     }
 }
