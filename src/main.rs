@@ -62,15 +62,11 @@ fn main() {
     let features = commits
         .lines()
         .map(|line| line.chars().skip(18).collect::<String>())
-        .filter(|line| line.starts_with("feat"))
+        .filter(|line| line.contains("feat:"))
         .map(|line| {
-            capitalize_word(
-                line.replace("feat", "")
-                    .replace(":", "")
-                    .trim()
-                    .to_lowercase()
-                    .as_str(),
-            )
+            let parts = line.split("feat:").collect::<Vec<&str>>();
+            let line = parts[1].trim();
+            capitalize_word(line)
         })
         .collect::<Vec<String>>()
         .join("\n");
@@ -78,14 +74,13 @@ fn main() {
     let fixes = commits
         .lines()
         .map(|line| line.chars().skip(18).collect::<String>())
-        .filter(|line| line.starts_with("fix"))
+        .filter(|line| line.contains("fix:"))
         .map(|line| {
-            line.replace("fix", "")
-                .replace(":", "")
-                .trim()
-                .to_lowercase()
+            let parts = line.split("fix:").collect::<Vec<&str>>();
+            let line = parts[1].trim();
+            capitalize_word(line)
         })
-        .map(|line| format!("Fix {}", capitalize_word(line.as_str())))
+        .map(|line| format!("Fix {}", line))
         .collect::<Vec<String>>()
         .join("\n");
 
