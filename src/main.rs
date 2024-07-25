@@ -61,6 +61,7 @@ fn main() {
 
     let features = commits
         .lines()
+        .rev()
         .map(|line| line.chars().skip(18).collect::<String>())
         .filter(|line| line.contains("feat:"))
         .map(|line| {
@@ -73,6 +74,7 @@ fn main() {
 
     let fixes = commits
         .lines()
+        .rev()
         .map(|line| line.chars().skip(18).collect::<String>())
         .filter(|line| line.contains("fix:"))
         .map(|line| {
