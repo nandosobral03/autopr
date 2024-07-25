@@ -113,7 +113,12 @@ fn main() {
             "-B",
             target_branch,
             "-l",
-            "draft",
+            // Always add draft, if it's a hotfix also add the hotfix label comma separated
+            if target_branch == "main" {
+                "draft,hotfix"
+            } else {
+                "draft"
+            },
         ])
         .output()
         .expect("Failed to create PR");
