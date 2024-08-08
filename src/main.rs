@@ -102,10 +102,9 @@ fn get_pr_title(branch_name: &String, config: &Config) -> String {
             None => match config.title.prefixes.get(branch_start) {
                 Some(pr_title) => branch_name
                     .replacen(branch_start, pr_title, 1)
-                    .split("-")
-                    .nth(1)
-                    .unwrap()
+                    .replace("-", " ")
                     .to_string(),
+
                 None => branch_name.clone(),
             },
         },
@@ -159,7 +158,7 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
         }
     };
 
-    let replaced_commits: Vec<String> = commits
+    let mut replaced_commits: Vec<String> = commits
         .lines()
         .rev()
         .filter(|line| !line.is_empty())
@@ -180,6 +179,13 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
         })
         .map(|line| remove_ansi_codes(&line).to_string())
         .collect();
+
+    // sort by first their prefix
+    replaced_commits.sort_by(|a, b| {
+        let a_prefix = a.split(": ").next().unwrap();
+        let b_prefix = b.split(": ").next().unwrap();
+        a_prefix.cmp(b_prefix)
+    });
 
     replaced_commits
 }
@@ -212,12 +218,23 @@ fn get_commit_body(config: &Config, target_branch: &String) -> String {
                 .find(|prefix| line.contains(format!("{}:", prefix).as_str()))
                 .expect("Could not find matching prefix in commit message");
             let prefix_config = config.commits.prefixes.get(matching_prefix).unwrap();
-            return format!(
-                "- {}",
-                line.replacen(format!("{}:", matching_prefix).as_str(), prefix_config, 1)
-                    .trim()
+
+            let replaced = line
+                .clone()
+                .replacen(format!("{}:", matching_prefix).as_str(), prefix_config, 1)
+                .trim()
+                .to_string();
+            //Turn the first letter of the message to uppercase, the rest stays the same
+
+            let first_letter = &replaced.chars().next().unwrap();
+            let capitalized = format!(
+                "{}{}",
+                first_letter.to_uppercase(),
+                replaced.chars().skip(1).collect::<String>()
             )
             .to_string();
+
+            return format!("- {}", capitalized).to_string();
         })
         .collect::<Vec<String>>()
         .join("\n");
@@ -286,6 +303,8 @@ fn main() {
     if draft {
         args.push("-D");
     }
+
+    println!("Commit body: {}", commit_body);
 
     let output = std::process::Command::new("gh")
         .args(args)
