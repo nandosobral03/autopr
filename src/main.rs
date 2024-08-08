@@ -1,57 +1,194 @@
+use core::panic;
+use std::{collections::HashMap, fs};
+
+use serde::Deserialize;
+
 fn capitalize_word(s: &str) -> String {
     let start = s.chars().next().unwrap();
     let rest = s.chars().skip(1).collect::<String>();
     format!("{}{}", start.to_uppercase(), rest)
 }
 
-fn main() {
-    let output = std::process::Command::new("git")
-        .args(&["branch", "--show-current"])
-        .output()
-        .expect("failed to execute process");
+/*
+# Target branch configuration
+[branches] # If no other configuration is found, the default branch will be used
+default = "develop"
 
-    println!("Branch name: {}", String::from_utf8_lossy(&output.stdout));
-    let branch_name = String::from_utf8_lossy(&output.stdout).to_lowercase();
+[branches.includes] # If the branch name includes the word "hotfix", the target branch will be "main"
+# You can add other rules with the same logic, for example:
+# If the branch name includes the word "feature", the target branch will be "develop"
+hotfix = "main"
 
-    // check the start of the branch name
-    let new_name: String = match branch_name.split("-").next() {
-        Some(branch_start) => match branch_start {
-            "htp20" => {
-                let ticket_number = branch_name.split("-").nth(1).unwrap();
-                format!(
-                    "[HTP20-{}] {}",
-                    ticket_number,
+[title] # Based on the branch name the PR title will be changed
+[title.prefixes] # This is the project prefix on jira
+htp20 = "[HTP20-{ticket_number}] {ticket_name}" # e.g. "HTP20-1234 My ticket name"
+
+[template]
+path = "template.md"
+
+[labels]
+default = ["draft"] # All branches will be assigned the default labels
+
+[labels.includes] # If the branch name includes the word "hotfix", the labels will also include "hotfix"
+hotfix = ["hotfix"]
+
+
+[commits] # How your commits will be formatted on the PR
+# If the commit message starts with "feat:", the PR will be prefixed with the text ""
+# If the commit message starts with "fix:", the PR will be assigned the label "Fix: "
+[commits.prefixes] # Prefixes are assumed to end on : or (scope): as per https://www.conventionalcommits.org/en/v1.0.0/#specification
+feat = ""
+fix = "Fix:"
+*/
+
+#[derive(Deserialize, Debug)]
+struct Config {
+    branches: Branches,
+    title: Title,
+    template: Template,
+    labels: Labels,
+    commits: Commits,
+    draft: Draft,
+}
+#[derive(Deserialize, Debug)]
+struct Branches {
+    default: String,
+    includes: HashMap<String, String>,
+}
+#[derive(Deserialize, Debug)]
+struct Title {
+    jira_prefixes: HashMap<String, String>,
+    prefixes: HashMap<String, String>,
+}
+#[derive(Deserialize, Debug)]
+struct Template {
+    path: String,
+}
+#[derive(Deserialize, Debug)]
+struct Labels {
+    default: Vec<String>,
+    includes: HashMap<String, Vec<String>>,
+}
+#[derive(Deserialize, Debug)]
+struct Commits {
+    prefixes: HashMap<String, String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Draft {
+    default: bool,
+}
+
+fn get_config() -> Config {
+    let config = include_str!("config.toml");
+    toml::from_str(config).unwrap()
+}
+
+fn get_pr_title(branch_name: &String, config: &Config) -> String {
+    match branch_name.split("-").next() {
+        Some(branch_start) => match config.title.jira_prefixes.get(branch_start) {
+            Some(pr_title) => match branch_name.split("-").nth(1) {
+                Some(ticket_number) => pr_title.replace("{ticket_number}", ticket_number).replace(
+                    "{ticket_name}",
                     branch_name
                         .split("-")
                         .skip(2)
-                        .map(|word| capitalize_word(word))
-                        .collect::<Vec<String>>()
+                        .collect::<Vec<&str>>()
                         .join(" ")
-                )
-            }
-            _ => branch_name
-                .split("-")
-                .map(|word| capitalize_word(word))
-                .collect::<Vec<String>>()
-                .join(" "),
+                        .as_str(),
+                ),
+                None => branch_name.clone(),
+            },
+            None => match config.title.prefixes.get(branch_start) {
+                Some(pr_title) => branch_name
+                    .replacen(branch_start, pr_title, 1)
+                    .split("-")
+                    .nth(1)
+                    .unwrap()
+                    .to_string(),
+                None => branch_name.clone(),
+            },
         },
-        None => {
-            // change kebab case capitalizing each word
-            branch_name
-                .split("-")
-                .map(|word| capitalize_word(word))
-                .collect::<Vec<String>>()
-                .join(" ")
+        None => branch_name
+            .split("-")
+            .map(|word| capitalize_word(word))
+            .collect::<Vec<String>>()
+            .join(" "),
+    }
+}
+
+fn get_target_branch(branch_name: &String, config: &Config) -> String {
+    config
+        .branches
+        .includes
+        .iter()
+        .find_map(|(key, value)| {
+            if branch_name.to_lowercase().contains(key) {
+                Some(value.clone())
+            } else {
+                None
+            }
+        })
+        .unwrap_or(config.branches.default.clone())
+}
+
+fn remove_ansi_codes(s: &str) -> String {
+    // Regex to match ANSI escape codes
+    let re = Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap();
+    re.replace_all(s, "").to_string()
+}
+
+use regex::Regex;
+fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
+    // Construct the regex pattern for the prefixes with optional scope
+    let pattern = prefixes
+        .iter()
+        .map(|prefix| {
+            // Escape special characters in prefix and build the regex pattern
+            format!(r"{}(?:\([^\)]*\))?:", prefix)
+        })
+        .collect::<Vec<String>>()
+        .join("|");
+
+    // Compile the regex pattern
+    let re = match Regex::new(&pattern) {
+        Ok(re) => re,
+        Err(e) => {
+            eprintln!("Failed to compile regex: {}", e);
+            return Vec::new();
         }
     };
 
-    let target_branch = if branch_name.to_lowercase().contains("hotfix") {
-        "main"
-    } else {
-        "develop"
-    };
+    let replaced_commits: Vec<String> = commits
+        .lines()
+        .rev()
+        .filter(|line| !line.is_empty())
+        .filter(|line| re.is_match(line))
+        .map(|line| {
+            let matched_prefix = re.find(line).unwrap().as_str();
+            // Get the real prefix instead of the regex capture group (removing the scope)
+            let mut clean_prefix = String::new();
+            for c in prefixes.iter() {
+                if matched_prefix.contains(c) {
+                    clean_prefix = c.to_string();
+                    break;
+                }
+            }
+            // The message is the rest of the line after the prefix, it's not captured
+            let message = line.split(matched_prefix).nth(1).unwrap().trim();
+            format!("{}: {}", clean_prefix, message)
+        })
+        .map(|line| remove_ansi_codes(&line).to_string())
+        .collect();
 
-    // Get a list of commits since the branch was created
+    replaced_commits
+}
+
+fn get_commit_body(config: &Config, target_branch: &String) -> String {
+    let mut commit_body = String::from_utf8(fs::read(config.template.path.clone()).unwrap())
+        .map_err(|_| "Could not read template file, check the path in config.toml")
+        .unwrap();
+
     let output = std::process::Command::new("git")
         .args(&["log", "--oneline", &format!("{}..HEAD", target_branch)])
         .output()
@@ -59,67 +196,99 @@ fn main() {
 
     let commits = String::from_utf8_lossy(&output.stdout);
 
-    let features = commits
-        .lines()
-        .rev()
-        .map(|line| line.chars().skip(18).collect::<String>())
-        .filter(|line| line.contains("feat:"))
+    let relevant_commit_prefixes = config
+        .commits
+        .prefixes
+        .iter()
+        .map(|(key, _value)| key.clone())
+        .collect::<Vec<String>>();
+
+    let commits_as_body = normalize_commits(&commits, &relevant_commit_prefixes)
+        .iter()
+        // Map with the config
         .map(|line| {
-            let parts = line.split("feat:").collect::<Vec<&str>>();
-            let line = parts[1].trim();
-            format!("- {}", capitalize_word(line))
+            let matching_prefix = relevant_commit_prefixes
+                .iter()
+                .find(|prefix| line.contains(format!("{}:", prefix).as_str()))
+                .expect("Could not find matching prefix in commit message");
+            let prefix_config = config.commits.prefixes.get(matching_prefix).unwrap();
+            return format!(
+                "- {}",
+                line.replacen(format!("{}:", matching_prefix).as_str(), prefix_config, 1)
+                    .trim()
+            )
+            .to_string();
         })
         .collect::<Vec<String>>()
         .join("\n");
 
-    let fixes = commits
-        .lines()
-        .rev()
-        .map(|line| line.chars().skip(18).collect::<String>())
-        .filter(|line| line.contains("fix:"))
-        .map(|line| {
-            let parts = line.split("fix:").collect::<Vec<&str>>();
-            let line = parts[1].trim();
-            capitalize_word(line)
-        })
-        .map(|line| format!("- Fix {}", line))
-        .collect::<Vec<String>>()
-        .join("\n");
+    if !commit_body.contains("{LIST_COMMITS}") {
+        panic!("Could not find LIST_COMMITS in commit body");
+    }
 
-    let mut commit_body = String::from("## Describe your changes\n\n");
-    commit_body.push_str(&features);
-    commit_body.push_str("\n\n");
-    commit_body.push_str(&fixes);
-    commit_body.push_str("\n\n");
-    commit_body.push_str("## Screenshots (if appropriate)\n\n");
-    commit_body.push_str("## Checklist\n\n");
-    commit_body.push_str("- [ ] Moved the ticket to Code Review\n");
-    commit_body.push_str("- [ ] Uploaded screenshots (if appropriate)\n");
-    commit_body.push_str("- [x] Run linter rules\n");
-    commit_body.push_str("- [x] Run tests (and fix them if needed)\n");
-    commit_body.push_str("\n\n");
-    commit_body.push_str("## Picture of a cute animal\n");
+    commit_body = commit_body.replace("{LIST_COMMITS}", &commits_as_body);
+    commit_body
+}
+
+fn get_pr_labels(config: &Config, branch_name: &String) -> Vec<String> {
+    let mut labels = config.labels.default.clone();
+
+    for (key, value) in config.labels.includes.iter() {
+        if branch_name.to_lowercase().contains(key) {
+            labels.extend(value.clone());
+        }
+    }
+
+    labels
+}
+
+fn main() {
+    let config = get_config();
+
+    let output = std::process::Command::new("git")
+        .args(&["branch", "--show-current"])
+        .output()
+        .expect("failed to execute process");
+
+    let branch_name = String::from_utf8_lossy(&output.stdout).to_lowercase();
+
+    let pr_title = get_pr_title(&branch_name, &config);
+
+    let target_branch = get_target_branch(&branch_name, &config);
+
+    // Get a list of commits since the branch was created
+
+    let commit_body = get_commit_body(&config, &target_branch);
+
+    let pr_labels = get_pr_labels(&config, &branch_name).join(",");
+
+    let draft = config.draft.default;
+
+    // print whole command
+    let mut args = vec![
+        "pr",
+        "create",
+        "-a",
+        "@me",
+        "-t",
+        &pr_title,
+        "--body",
+        &commit_body,
+        "-B",
+        target_branch.as_str(),
+    ];
+
+    if !pr_labels.is_empty() {
+        args.push("-l");
+        args.push(pr_labels.as_str());
+    }
+
+    if draft {
+        args.push("-D");
+    }
 
     let output = std::process::Command::new("gh")
-        .args(&[
-            "pr",
-            "create",
-            "-a",
-            "@me",
-            "-t",
-            &new_name,
-            "--body",
-            &commit_body,
-            "-B",
-            target_branch,
-            "-l",
-            // Always add draft, if it's a hotfix also add the hotfix label comma separated
-            if target_branch == "main" {
-                "draft,hotfix"
-            } else {
-                "draft"
-            },
-        ])
+        .args(args)
         .output()
         .expect("Failed to create PR");
 
@@ -129,7 +298,8 @@ fn main() {
             String::from_utf8_lossy(&output.stderr)
         );
     } else {
-        println!("New name: {}", new_name);
         println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
+        println!("Title: {}", pr_title);
+        println!("Target branch: {}", target_branch);
     }
 }
