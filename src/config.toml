@@ -1,3 +1,6 @@
+draft = false # For this to work draft pr must be enabled on the repo
+dry_run = true # If true, the script will not create a PR, but print the command that would be executed
+
 # Target branch configuration
 [branches] # If no other configuration is found, the default branch will be used
 default = "develop"
@@ -7,7 +10,9 @@ default = "develop"
 # If the branch name includes the word "feature", the target branch will be "develop"
 hotfix = "main"
 
-[title] # By default the PR title with be the branch name, changed from kebab case to title case e.g. branch-1234-my-ticket-name -> Branch 1234 My Ticket Name
+[title] # By default the PR title with be the branch name, changed from kebab case to title case e.g.
+# branch-1234-my-ticket-name -> Branch 1234 My Ticket Name.
+# If using jira branch naming convention, the {ticket_number} and {ticket_name} will be replaced with the ticket number and name
 
 [title.jira_prefixes] # This is the project prefix on jira, {ticket_number} and {ticket_name} will be replaced with the ticket number and name if using the jira branch naming convention
 htp20 = "[HTP20-{ticket_number}] {ticket_name}" # e.g. "HTP20-1234 My ticket name"
@@ -17,7 +22,7 @@ hotfix = "Hotfix:"
 
 
 [template] # Absolute path to the template file
-path = "/Users/fernandosobral/scripts/ghpr-script/src/template.md"
+path = "/Users/fernandosobral/scripts/ghpr-script/template.md"
 
 [labels]
 default = ["draft"] # All branches will be assigned the default labels
@@ -35,5 +40,3 @@ fix = "Fix:"
 chore = "Chore:"
 
 
-[draft]
-default = false # For this to work draft pr must be enabled on the repo

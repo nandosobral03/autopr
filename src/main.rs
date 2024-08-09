@@ -1,5 +1,5 @@
 use core::panic;
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, env, fs, path::Path};
 
 use serde::Deserialize;
 
@@ -9,38 +9,6 @@ fn capitalize_word(s: &str) -> String {
     format!("{}{}", start.to_uppercase(), rest)
 }
 
-/*
-# Target branch configuration
-[branches] # If no other configuration is found, the default branch will be used
-default = "develop"
-
-[branches.includes] # If the branch name includes the word "hotfix", the target branch will be "main"
-# You can add other rules with the same logic, for example:
-# If the branch name includes the word "feature", the target branch will be "develop"
-hotfix = "main"
-
-[title] # Based on the branch name the PR title will be changed
-[title.prefixes] # This is the project prefix on jira
-htp20 = "[HTP20-{ticket_number}] {ticket_name}" # e.g. "HTP20-1234 My ticket name"
-
-[template]
-path = "template.md"
-
-[labels]
-default = ["draft"] # All branches will be assigned the default labels
-
-[labels.includes] # If the branch name includes the word "hotfix", the labels will also include "hotfix"
-hotfix = ["hotfix"]
-
-
-[commits] # How your commits will be formatted on the PR
-# If the commit message starts with "feat:", the PR will be prefixed with the text ""
-# If the commit message starts with "fix:", the PR will be assigned the label "Fix: "
-[commits.prefixes] # Prefixes are assumed to end on : or (scope): as per https://www.conventionalcommits.org/en/v1.0.0/#specification
-feat = ""
-fix = "Fix:"
-*/
-
 #[derive(Deserialize, Debug)]
 struct Config {
     branches: Branches,
@@ -48,7 +16,8 @@ struct Config {
     template: Template,
     labels: Labels,
     commits: Commits,
-    draft: Draft,
+    draft: bool,
+    dry_run: bool,
 }
 #[derive(Deserialize, Debug)]
 struct Branches {
@@ -74,14 +43,10 @@ struct Commits {
     prefixes: HashMap<String, String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct Draft {
-    default: bool,
-}
-
 fn get_config() -> Config {
-    let config = include_str!("config.toml");
-    toml::from_str(config).unwrap()
+    let config =
+        fs::read_to_string(Path::new("./config.toml")).expect("Could not read config.toml");
+    toml::from_str(config.as_str()).expect("Could not parse config.toml")
 }
 
 fn get_pr_title(branch_name: &String, config: &Config) -> String {
@@ -279,7 +244,7 @@ fn main() {
 
     let pr_labels = get_pr_labels(&config, &branch_name).join(",");
 
-    let draft = config.draft.default;
+    let draft = config.draft;
 
     // print whole command
     let mut args = vec![
@@ -295,6 +260,11 @@ fn main() {
         target_branch.as_str(),
     ];
 
+    let extra_args: Vec<String> = env::args().skip(1).collect();
+    for arg in &extra_args {
+        args.push(arg.as_str());
+    }
+
     if !pr_labels.is_empty() {
         args.push("-l");
         args.push(pr_labels.as_str());
@@ -304,21 +274,29 @@ fn main() {
         args.push("-D");
     }
 
-    println!("Commit body: {}", commit_body);
-
-    let output = std::process::Command::new("gh")
-        .args(args)
-        .output()
-        .expect("Failed to create PR");
-
-    if !output.status.success() {
-        println!(
-            "Error creating PR: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-    } else {
+    if config.dry_run {
+        println!("Dry run, not creating PR");
         println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
         println!("Title: {}", pr_title);
         println!("Target branch: {}", target_branch);
+        println!("Commit body: \n{}", commit_body);
+        println!("PR labels: {}", pr_labels);
+        // println!("Would execute command: gh {}", args.join(" "));
+    } else {
+        let output = std::process::Command::new("gh")
+            .args(args)
+            .output()
+            .expect("Failed to create PR");
+
+        if !output.status.success() {
+            println!(
+                "Error creating PR: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        } else {
+            println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
+            println!("Title: {}", pr_title);
+            println!("Target branch: {}", target_branch);
+        }
     }
 }
