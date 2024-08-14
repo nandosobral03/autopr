@@ -157,8 +157,7 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
 
 fn get_commit_body(config: &Config, target_branch: &String) -> String {
     let mut commit_body = String::from_utf8(fs::read(config.template.path.clone()).unwrap())
-        .map_err(|_| "Could not read template file, check the path in config.toml")
-        .unwrap();
+        .expect("Could not read template file, check the path in config.toml");
 
     let output = std::process::Command::new("git")
         .args(&["log", "--oneline", &format!("{}..HEAD", target_branch)])
@@ -286,7 +285,7 @@ fn main() {
         let output = std::process::Command::new("gh")
             .args(args)
             .output()
-            .expect("Failed to create PR");
+            .expect("Github CLI not installed please go to https://cli.github.com and install it");
 
         if !output.status.success() {
             println!(
