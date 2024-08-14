@@ -1,4 +1,4 @@
-draft = false # For this to work draft pr must be enabled on the repo
+draft = false # Creates pull requests as deaft, for this to work draft pr must be enabled on the repo
 dry_run = false # If true, the script will not create a PR, but print the command that would be executed
 
 # Target branch configuration

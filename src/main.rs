@@ -1,12 +1,20 @@
 use core::panic;
+use serde::Deserialize;
 use std::{collections::HashMap, env, fs};
 
-use serde::Deserialize;
+#[derive(serde::Deserialize, Debug)]
+pub enum ScriptErrors {
+    ConfigError(String),
+    ParseError(String),
+}
 
-fn capitalize_word(s: &str) -> String {
-    let start = s.chars().next().unwrap();
+fn capitalize_word(s: &str) -> Result<String, ScriptErrors> {
+    let start = s
+        .chars()
+        .next()
+        .ok_or(ScriptErrors::ConfigError(format!("Empty string")))?;
     let rest = s.chars().skip(1).collect::<String>();
-    format!("{}{}", start.to_uppercase(), rest)
+    Ok(format!("{}{}", start.to_uppercase(), rest))
 }
 
 #[derive(Deserialize, Debug)]
@@ -43,55 +51,61 @@ struct Commits {
     prefixes: HashMap<String, String>,
 }
 
-fn get_config() -> Config {
-    // Get the path to the current executable
-    let exe_path = env::current_exe().expect("Failed to get current executable path");
+fn get_config() -> Result<Config, ScriptErrors> {
+    let exe_path = env::current_exe().map_err(|e| {
+        ScriptErrors::ConfigError(format!("Failed to get current executable path: {}", e))
+    })?;
 
-    // Derive the directory containing the executable
-    let exe_dir = exe_path
-        .parent()
-        .expect("Failed to get parent directory of executable");
-
-    // Create the path to the config.toml file
+    let exe_dir = exe_path.parent().ok_or(ScriptErrors::ConfigError(format!(
+        "Failed to get parent directory of executable"
+    )))?;
     let config_path = exe_dir.join("config.toml");
 
-    // Read the configuration file
-    let config = fs::read_to_string(config_path).expect("Could not read config.toml");
+    let config = fs::read_to_string(config_path)
+        .map_err(|e| ScriptErrors::ConfigError(format!("Failed to read config file: {}", e)))?;
 
-    // Parse the configuration file
-    toml::from_str(&config).expect("Could not parse config.toml")
+    toml::from_str(&config).map_err(|e| ScriptErrors::ParseError(e.to_string()))
 }
 
-fn get_pr_title(branch_name: &String, config: &Config) -> String {
-    match branch_name.split("-").next() {
-        Some(branch_start) => match config.title.jira_prefixes.get(branch_start) {
-            Some(pr_title) => match branch_name.split("-").nth(1) {
-                Some(ticket_number) => pr_title.replace("{ticket_number}", ticket_number).replace(
-                    "{ticket_name}",
-                    branch_name
-                        .split("-")
-                        .skip(2)
-                        .collect::<Vec<&str>>()
-                        .join(" ")
-                        .as_str(),
-                ),
-                None => branch_name.clone(),
-            },
-            None => match config.title.prefixes.get(branch_start) {
-                Some(pr_title) => branch_name
-                    .replacen(branch_start, pr_title, 1)
-                    .replace("-", " ")
-                    .to_string(),
+fn get_pr_title(branch_name: &str, config: &Config) -> String {
+    let parts: Vec<&str> = branch_name.split('-').collect();
 
-                None => branch_name.clone(),
-            },
-        },
-        None => branch_name
-            .split("-")
-            .map(|word| capitalize_word(word))
-            .collect::<Vec<String>>()
-            .join(" "),
+    if parts.is_empty() {
+        return branch_name.to_string();
     }
+
+    let branch_start = parts[0];
+
+    let join_remaining_parts = |parts: &[&str]| {
+        parts
+            .iter()
+            .skip(1)
+            .map(|&s| s)
+            .collect::<Vec<&str>>()
+            .join(" ")
+    };
+
+    if let Some(pr_title) = config.title.jira_prefixes.get(branch_start) {
+        if parts.len() > 1 {
+            let ticket_number = parts[1];
+            let ticket_name = join_remaining_parts(&parts);
+            return pr_title
+                .replace("{ticket_number}", ticket_number)
+                .replace("{ticket_name}", &ticket_name);
+        }
+    } else if let Some(pr_title) = config.title.prefixes.get(branch_start) {
+        let replaced_title = branch_name
+            .replacen(branch_start, pr_title, 1)
+            .replace("-", " ");
+        return replaced_title;
+    }
+
+    // Capitalize each word if no prefix was found
+    parts
+        .iter()
+        .map(|&word| capitalize_word(word).unwrap_or(word.to_string()))
+        .collect::<Vec<String>>()
+        .join(" ")
 }
 
 fn get_target_branch(branch_name: &String, config: &Config) -> String {
@@ -111,12 +125,13 @@ fn get_target_branch(branch_name: &String, config: &Config) -> String {
 
 fn remove_ansi_codes(s: &str) -> String {
     // Regex to match ANSI escape codes
-    let re = Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]").unwrap();
+    let re = Regex::new(r"\x1b\[[0-?]*[ -/]*[@-~]")
+        .unwrap_or_else(|e| panic!("Failed to compile regex to remove ansi codes: {}", e));
     re.replace_all(s, "").to_string()
 }
 
 use regex::Regex;
-fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
+fn normalize_commits(commits: &str, prefixes: &[String]) -> Result<Vec<String>, ScriptErrors> {
     // Construct the regex pattern for the prefixes with optional scope
     let pattern = prefixes
         .iter()
@@ -128,13 +143,8 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
         .join("|");
 
     // Compile the regex pattern
-    let re = match Regex::new(&pattern) {
-        Ok(re) => re,
-        Err(e) => {
-            eprintln!("Failed to compile regex: {}", e);
-            return Vec::new();
-        }
-    };
+    let re = Regex::new(&pattern)
+        .map_err(|e| ScriptErrors::ConfigError(format!("Failed to compile regex: {}", e)))?;
 
     let mut replaced_commits: Vec<String> = commits
         .lines()
@@ -142,7 +152,10 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
         .filter(|line| !line.is_empty())
         .filter(|line| re.is_match(line))
         .map(|line| {
-            let matched_prefix = re.find(line).unwrap().as_str();
+            let matched_prefix = re
+                .find(line)
+                .unwrap_or_else(|| panic!("Failed to find prefix in commit message"))
+                .as_str();
             // Get the real prefix instead of the regex capture group (removing the scope)
             let mut clean_prefix = String::new();
             for c in prefixes.iter() {
@@ -152,76 +165,96 @@ fn normalize_commits(commits: &str, prefixes: &[String]) -> Vec<String> {
                 }
             }
             // The message is the rest of the line after the prefix, it's not captured
-            let message = line.split(matched_prefix).nth(1).unwrap().trim();
+            let message = line.split(matched_prefix).nth(1).unwrap_or_default().trim();
             format!("{}: {}", clean_prefix, message)
         })
-        .map(|line| remove_ansi_codes(&line).to_string())
+        .map(|line| remove_ansi_codes(&line))
         .collect();
 
     // sort by first their prefix
     replaced_commits.sort_by(|a, b| {
-        let a_prefix = a.split(": ").next().unwrap();
-        let b_prefix = b.split(": ").next().unwrap();
+        let a_prefix = a.split(": ").next().unwrap_or_default();
+        let b_prefix = b.split(": ").next().unwrap_or_default();
         a_prefix.cmp(b_prefix)
     });
 
-    replaced_commits
+    Ok(replaced_commits)
 }
 
-fn get_commit_body(config: &Config, target_branch: &String) -> String {
-    let mut commit_body = String::from_utf8(fs::read(config.template.path.clone()).unwrap())
-        .expect("Could not read template file, check the path in config.toml");
+fn get_commit_body(config: &Config, target_branch: &String) -> Result<String, ScriptErrors> {
+    let mut commit_body = match fs::read(config.template.path.clone()) {
+        Ok(content) => String::from_utf8(content).map_err(|e| {
+            ScriptErrors::ConfigError(format!(
+                "Failed to parse template file '{}': {}",
+                config.template.path, e
+            ))
+        })?,
+        Err(e) => panic!(
+            "Could not read template file '{}': {}",
+            config.template.path, e
+        ),
+    };
 
     let output = std::process::Command::new("git")
         .args(&["log", "--oneline", &format!("{}..HEAD", target_branch)])
         .output()
-        .expect("Failed to get commit list");
+        .map_err(|e| {
+            ScriptErrors::ConfigError(format!("Failed to get commit list from git: {}", e))
+        })?;
 
     let commits = String::from_utf8_lossy(&output.stdout);
 
     let relevant_commit_prefixes = config
         .commits
         .prefixes
-        .iter()
-        .map(|(key, _value)| key.clone())
+        .keys()
+        .cloned()
         .collect::<Vec<String>>();
 
-    let commits_as_body = normalize_commits(&commits, &relevant_commit_prefixes)
+    let commits_as_body = normalize_commits(&commits, &relevant_commit_prefixes)?
         .iter()
-        // Map with the config
         .map(|line| {
             let matching_prefix = relevant_commit_prefixes
                 .iter()
                 .find(|prefix| line.contains(format!("{}:", prefix).as_str()))
-                .expect("Could not find matching prefix in commit message");
-            let prefix_config = config.commits.prefixes.get(matching_prefix).unwrap();
-
+                .unwrap_or_else(|| {
+                    panic!("Could not find matching prefix in commit message: {}", line)
+                });
+            let prefix_config = config
+                .commits
+                .prefixes
+                .get(matching_prefix)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Could not find prefix config for prefix {}",
+                        matching_prefix
+                    )
+                });
             let replaced = line
-                .clone()
                 .replacen(format!("{}:", matching_prefix).as_str(), prefix_config, 1)
                 .trim()
                 .to_string();
-            //Turn the first letter of the message to uppercase, the rest stays the same
 
-            let first_letter = &replaced.chars().next().unwrap();
+            let first_letter = &replaced.chars().next().unwrap_or_default();
             let capitalized = format!(
                 "{}{}",
                 first_letter.to_uppercase(),
                 replaced.chars().skip(1).collect::<String>()
-            )
-            .to_string();
+            );
 
-            return format!("- {}", capitalized).to_string();
+            format!("- {}", capitalized)
         })
         .collect::<Vec<String>>()
         .join("\n");
 
     if !commit_body.contains("{LIST_COMMITS}") {
-        panic!("Could not find LIST_COMMITS in commit body");
+        return Err(ScriptErrors::ConfigError(
+            format!("{}", "Commit body does not contain {LIST_COMMITS}").to_string(),
+        ));
     }
 
     commit_body = commit_body.replace("{LIST_COMMITS}", &commits_as_body);
-    commit_body
+    Ok(commit_body)
 }
 
 fn get_pr_labels(config: &Config, branch_name: &String) -> Vec<String> {
@@ -236,13 +269,13 @@ fn get_pr_labels(config: &Config, branch_name: &String) -> Vec<String> {
     labels
 }
 
-fn main() {
-    let config = get_config();
+fn main() -> Result<(), ScriptErrors> {
+    let config = get_config()?;
 
     let output = std::process::Command::new("git")
         .args(&["branch", "--show-current"])
         .output()
-        .expect("failed to execute process");
+        .map_err(|e| ScriptErrors::ConfigError(format!("Failed to execute git command: {}", e)))?;
 
     let branch_name = String::from_utf8_lossy(&output.stdout).to_lowercase();
 
@@ -252,7 +285,7 @@ fn main() {
 
     // Get a list of commits since the branch was created
 
-    let commit_body = get_commit_body(&config, &target_branch);
+    let commit_body = get_commit_body(&config, &target_branch)?;
 
     let pr_labels = get_pr_labels(&config, &branch_name).join(",");
 
@@ -299,7 +332,12 @@ fn main() {
     let output = std::process::Command::new("gh")
         .args(args)
         .output()
-        .expect("Github CLI not installed please go to https://cli.github.com and install it");
+        .map_err(|e| {
+            ScriptErrors::ConfigError(format!(
+                "{} {}",
+                "Github CLI not installed please go to https://cli.github.com and install it", e
+            ))
+        })?;
 
     if !output.status.success() {
         println!(
@@ -310,5 +348,6 @@ fn main() {
         println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
         println!("Title: {}", pr_title);
         println!("Target branch: {}", target_branch);
-    }
+    };
+    return Ok(());
 }
