@@ -5,14 +5,14 @@ A tool for automating the creation of templated pull requests based on branch na
 ## Installation
 
 1. Download a release binary from the [releases page](https://github.com/fernandosobral/ghpr-script/releases).
-2. Create or obtain a `config.toml` file and place it in the same directory as the binary. For details on configuring this file, refer to the [Config](#config) section.
+2. Create or obtain a `config.toml` file and place it in the **same directory as the binary**. For details on configuring this file, refer to the [Config](#config) section.
 3. Navigate to a git repository and execute the binary.
 
 **Note:** Ensure you have [GitHub CLI](https://cli.github.com/) installed and authenticated, as it is required to create pull requests.
 
 ## Config
 
-The `config.toml` file should be located in the same directory as the binary. Below is an example configuration:
+The `config.toml` file should be located in the **same directory as the binary**. Below is an example configuration:
 
 ```toml
 draft = false # For this to work draft pr must be enabled on the repo

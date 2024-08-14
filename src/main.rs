@@ -272,18 +272,19 @@ fn main() {
         target_branch.as_str(),
     ];
 
-    let extra_args: Vec<String> = env::args().skip(1).collect();
-    for arg in &extra_args {
-        args.push(arg.as_str());
-    }
-
     if !pr_labels.is_empty() {
         args.push("-l");
         args.push(pr_labels.as_str());
     }
 
     if draft {
-        args.push("-D");
+        args.push("-d");
+    }
+
+    let extra_args: Vec<String> = env::args().skip(1).collect();
+
+    for arg in &extra_args {
+        args.push(arg.as_str());
     }
 
     if config.dry_run {
@@ -293,22 +294,21 @@ fn main() {
         println!("Target branch: {}", target_branch);
         println!("Commit body: \n{}", commit_body);
         println!("PR labels: {}", pr_labels);
-        // println!("Would execute command: gh {}", args.join(" "));
-    } else {
-        let output = std::process::Command::new("gh")
-            .args(args)
-            .output()
-            .expect("Github CLI not installed please go to https://cli.github.com and install it");
+        args.push("--dry-run");
+    }
+    let output = std::process::Command::new("gh")
+        .args(args)
+        .output()
+        .expect("Github CLI not installed please go to https://cli.github.com and install it");
 
-        if !output.status.success() {
-            println!(
-                "Error creating PR: {}",
-                String::from_utf8_lossy(&output.stderr)
-            );
-        } else {
-            println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
-            println!("Title: {}", pr_title);
-            println!("Target branch: {}", target_branch);
-        }
+    if !output.status.success() {
+        println!(
+            "Error creating PR: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    } else {
+        println!("PR created: {}", String::from_utf8_lossy(&output.stdout));
+        println!("Title: {}", pr_title);
+        println!("Target branch: {}", target_branch);
     }
 }
