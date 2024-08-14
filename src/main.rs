@@ -1,5 +1,5 @@
 use core::panic;
-use std::{collections::HashMap, env, fs, path::Path};
+use std::{collections::HashMap, env, fs};
 
 use serde::Deserialize;
 
@@ -44,9 +44,22 @@ struct Commits {
 }
 
 fn get_config() -> Config {
-    let config =
-        fs::read_to_string(Path::new("./config.toml")).expect("Could not read config.toml");
-    toml::from_str(config.as_str()).expect("Could not parse config.toml")
+    // Get the path to the current executable
+    let exe_path = env::current_exe().expect("Failed to get current executable path");
+
+    // Derive the directory containing the executable
+    let exe_dir = exe_path
+        .parent()
+        .expect("Failed to get parent directory of executable");
+
+    // Create the path to the config.toml file
+    let config_path = exe_dir.join("config.toml");
+
+    // Read the configuration file
+    let config = fs::read_to_string(config_path).expect("Could not read config.toml");
+
+    // Parse the configuration file
+    toml::from_str(&config).expect("Could not parse config.toml")
 }
 
 fn get_pr_title(branch_name: &String, config: &Config) -> String {
