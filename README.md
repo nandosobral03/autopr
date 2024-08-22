@@ -4,7 +4,7 @@ A tool for automating the creation of templated pull requests based on branch na
 
 ## Installation
 
-1. Download a release binary from the [releases page](https://github.com/fernandosobral/ghpr-script/releases).
+1. Download a release binary from the [releases page](https://github.com/nandosobral03/pr-creator/releases).
 2. Create or obtain a `config.toml` file and place it in the **same directory as the binary**. For details on configuring this file, refer to the [Config](#config) section.
 3. Navigate to a git repository and execute the binary.
 
@@ -29,16 +29,15 @@ hotfix = "main"
 
 [title] # By default the PR title with be the branch name, changed from kebab case to title case e.g.
 # branch-1234-my-ticket-name -> Branch 1234 My Ticket Name.
-# If using jira branch naming convention, the {ticket_number} and {ticket_name}
-#will be replaced with the ticket number and name
 
 [title.jira_prefixes] # This is the project prefix on jira, {ticket_number} and {ticket_name} will
 # be replaced with the ticket number and name if using the jira branch naming convention
-htp20 = "[HTP20-{ticket_number}] {ticket_name}" # e.g. "HTP20-1234 My ticket name"
+#An example of a jira branch name is HTP20-1234-my-ticket-name
+# htp20 is the project prefix, 1234 is the ticket number and my-ticket-name is the ticket name
+htp20 = "[HTP20-{ticket_number}] {ticket_name}" # e.g. "[HTP20-1234] My ticket name"
 
 [title.prefixes] # This will replace the prefix used with a given prefix
 hotfix = "Hotfix:"
-
 
 [template] # Absolute path to the template file
 path = "/Users/[username]/path/to/template.md"
@@ -67,19 +66,41 @@ Authenticate with GitHub CLI using the gh command to allow the script to create 
 
 Run the binary in a git repository to create a pull request. The script will generate the PR based on branch name, commit differences, and the provided configuration.
 
-For convenience, create an alias or script to simplify running the binary. Here’s an example:
+For convenience, create an alias or script to simplify running the binary. I personally use `ghpr` as the alias.
+
+Here's an example doing that on macOS/Linux:
 
 #### Create a script ~/scripts/ghpr.sh:
 
-```sh
+```bash
 #!/bin/bash
-~/scripts/path-to-binary
+/path/to/executable/pr-script
 ```
 
 #### Add the script directory to your PATH:
 
-Append the following to your ~/.bashrc or ~/.zshrc:
+Append the following to your ~/.bashrc, ~/zshrc, or whichever shell you use:
 
-```sh
+```bash
 export PATH="$PATH:$HOME/scripts"
 ```
+
+---
+
+Windows Example:
+
+#### Create a batch file C:\Scripts\ghpr.bat:
+
+```Powershell
+@echo off
+C:\path\to\executable\pr-script.exe
+```
+
+#### Add the script directory to your PATH:
+
+1. Open the Start menu and search for "Environment Variables"
+2. Click on "Edit the system environment variables"
+3. Click on the "Environment Variables" button
+4. Under "System variables", find and select the "Path" variable, then click "Edit"
+5. Click "New" and add the path to your scripts folder (e.g., C:\Scripts)
+6. Click "OK" to close all dialogs
