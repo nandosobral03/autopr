@@ -1,4 +1,4 @@
-# Project Title
+# PR Creator
 
 A tool for automating the creation of templated pull requests based on branch names and commit differences with the target branch. It is designed to work seamlessly with [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and integrates with [Jira](http://jira.com/)'s branch naming conventions.
 
