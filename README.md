@@ -1,10 +1,10 @@
-# PR Creator
+# AutoPR
 
 A tool for automating the creation of templated pull requests based on branch names and commit differences with the target branch. It is designed to work seamlessly with [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) and integrates with [Jira](http://jira.com/)'s branch naming conventions.
 
 ## Installation
 
-1. Download a release binary from the [releases page](https://github.com/nandosobral03/pr-creator/releases).
+1. Download a release binary from the [releases page](https://github.com/nandosobral03/autopr/releases).
 2. Create or obtain a `config.toml` file and place it in the **same directory as the binary**. For details on configuring this file, refer to the [Config](#config) section.
 3. Navigate to a git repository and execute the binary.
 
@@ -74,7 +74,7 @@ Here's an example doing that on macOS/Linux:
 
 ```bash
 #!/bin/bash
-/path/to/executable/pr-script
+/path/to/executable/autopr
 ```
 
 #### Add the script directory to your PATH:
@@ -93,7 +93,7 @@ Windows Example:
 
 ```Powershell
 @echo off
-C:\path\to\executable\pr-script.exe
+C:\path\to\executable\autopr.exe
 ```
 
 #### Add the script directory to your PATH:
