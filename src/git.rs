@@ -20,9 +20,9 @@ pub fn get_pr_title(branch_name: &str, config: &Config) -> String {
     let join_remaining_parts = |parts: &[&str]| {
         parts
             .iter()
-            .skip(1)
-            .map(|&s| s)
-            .collect::<Vec<&str>>()
+            .skip(2)
+            .map(|&word| capitalize_word(word).unwrap_or(word.to_string()))
+            .collect::<Vec<String>>()
             .join(" ")
     };
 
