@@ -26,7 +26,11 @@ pub fn get_pr_title(branch_name: &str, config: &Config) -> String {
             .join(" ")
     };
 
-    if let Some(pr_title) = config.title.jira_prefixes.get(branch_start) {
+    if let Some(pr_title) = config
+        .title
+        .jira_prefixes
+        .get(branch_start.to_lowercase().as_str())
+    {
         if parts.len() > 1 {
             let ticket_number = parts[1];
             let ticket_name = join_remaining_parts(&parts);

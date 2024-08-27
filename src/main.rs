@@ -5,6 +5,7 @@ use std::env;
 mod config;
 mod errors;
 mod git;
+mod test;
 mod utils;
 
 fn main() -> Result<(), ScriptErrors> {

@@ -57,3 +57,34 @@ pub fn get_config() -> Result<Config, ScriptErrors> {
 
     toml::from_str(&config).map_err(|e| ScriptErrors::ParseError(e.to_string()))
 }
+
+pub fn test_config() -> Config {
+    let mut jira_prefixes = HashMap::new();
+    jira_prefixes.insert(
+        "htp20".to_string(),
+        "[HTP20-{ticket_number}] {ticket_name}".to_string(),
+    );
+
+    Config {
+        branches: Branches {
+            default: "main".to_string(),
+            includes: HashMap::new(),
+        },
+        title: Title {
+            jira_prefixes,
+            prefixes: HashMap::new(),
+        },
+        template: Template {
+            path: ".github/PULL_REQUEST_TEMPLATE.md".to_string(),
+        },
+        labels: Labels {
+            default: vec!["bug".to_string(), "enhancement".to_string()],
+            includes: HashMap::new(),
+        },
+        commits: Commits {
+            prefixes: HashMap::new(),
+        },
+        draft: false,
+        dry_run: false,
+    }
+}
