@@ -41,7 +41,13 @@ pub fn get_pr_title(branch_name: &str, config: &Config) -> String {
     } else if let Some(pr_title) = config.title.prefixes.get(branch_start) {
         let replaced_title = branch_name
             .replacen(branch_start, pr_title, 1)
-            .replace("-", " ");
+            .split("-")
+            .map(|word| capitalize_word(word).unwrap_or(word.to_string()))
+            .collect::<Vec<String>>()
+            .join(" ")
+            .trim()
+            .replace("  ", " ")
+            .to_string();
         return replaced_title;
     }
 
